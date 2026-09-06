@@ -26,8 +26,12 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Data
-data/
+# Data & Models
+data/*
+!data/.gitkeep
+
+models/*
+!models/.gitkeep
 
 # PyInstaller
 #   Usually these files are written by a python script from a template
