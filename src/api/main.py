@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -5,13 +6,26 @@ from sqlalchemy.orm import Session
 from src.api.schemas import TransactionInput, PredictionOutput
 from src.db.database import engine, Base, get_db
 from src.db.crud import create_transaction_log
+from src.ml.model import FraudModelService
 
 Base.metadata.create_all(bind=engine)
+
+model_service: FraudModelService = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model_service
+    model_service = FraudModelService()
+    yield
+    model_service = None
+
 
 app = FastAPI(
     title="FinTech Fraud Detection Microservice",
     description="Микросервис для детектирования мошеннических транзакций",
-    version="0.1.0",
+    version="1.0.0",
+    lifespan=lifespan,
 )
 
 
@@ -33,9 +47,7 @@ async def healthcheck() -> HealthCheckResponse:
 
 @app.get("/", tags=["Root"])
 async def root():
-    return {
-        "message": "Fraud Detection API is running. Go to /docs for Swagger UI."
-    }
+    return {"message": "Fraud Detection API is running. Go to /docs for Swagger UI."}
 
 
 @app.post(
@@ -50,14 +62,14 @@ async def predict(
     db: Session = Depends(get_db)
 ) -> PredictionOutput:
 
-    # Временно
-    dummy_probability = 0.85 if transaction.Amount > 5000 else 0.02
-    is_fraud = dummy_probability > 0.5
+    transaction_dict = transaction.model_dump()
+
+    result = model_service.predict(transaction_dict)
 
     prediction = PredictionOutput(
-        is_fraud=is_fraud,
-        fraud_probability=dummy_probability,
-        model_version="0.1.0-mock",
+        is_fraud=result["is_fraud"],
+        fraud_probability=result["fraud_probability"],
+        model_version=result["model_version"],
     )
 
     create_transaction_log(db=db, transaction=transaction, prediction=prediction)
